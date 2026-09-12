@@ -77,6 +77,12 @@ def _clean_sniper_value(val: Any) -> str:
     return s
 
 
+def _is_unavailable_chip_check(value: Any) -> bool:
+    """Return whether a checklist entry reports unavailable chip data, not a failed signal."""
+    text = str(value or "")
+    return "筹码" in text and any(marker in text for marker in ("不可用", "数据缺失", "无法判断", "未启用"))
+
+
 def _resolve_templates_dir() -> Path:
     """Resolve template directory relative to project root."""
     config = get_config()
@@ -187,7 +193,15 @@ def render(
     report_timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 
     def failed_checks(checklist: List[str]) -> List[str]:
-        return [c for c in (checklist or []) if c.startswith("❌") or c.startswith("⚠️")]
+        return [
+            check
+            for check in (checklist or [])
+            if (check.startswith("❌") or check.startswith("⚠️"))
+            and not _is_unavailable_chip_check(check)
+        ]
+
+    def unavailable_chip_checks(checklist: List[str]) -> List[str]:
+        return [check for check in (checklist or []) if _is_unavailable_chip_check(check)]
 
     def phase_pack_excerpt(result: AnalysisResult) -> str:
         return format_public_phase_pack_excerpt(
@@ -225,6 +239,7 @@ def render(
         "escape_md": _escape_md,
         "clean_sniper": _clean_sniper_value,
         "failed_checks": failed_checks,
+        "unavailable_chip_checks": unavailable_chip_checks,
         "phase_pack_excerpt": phase_pack_excerpt,
         "history_by_code": {},
         "get_chip_unavailable_reason": get_chip_unavailable_reason,

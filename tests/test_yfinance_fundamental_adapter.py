@@ -52,6 +52,35 @@ class TestYfinanceSymbolConversion(unittest.TestCase):
 
 
 class TestYfinanceFundamentalAdapter(unittest.TestCase):
+    def test_rejects_implausible_nonfinancial_profit_margin_from_prompt_data(self) -> None:
+        """A non-financial issuer with an implausible profit margin must be held for verification."""
+        info = {
+            "financialCurrency": "USD",
+            "currency": "USD",
+            "sector": "Technology",
+        }
+        income_df = pd.DataFrame(
+            {
+                pd.Timestamp("2026-06-30"): {
+                    "Total Revenue": 119_796_000_000.0,
+                    "Net Income": 112_107_000_000.0,
+                },
+            }
+        )
+        cashflow_df = pd.DataFrame(
+            {pd.Timestamp("2026-06-30"): {"Operating Cash Flow": 39_069_000_000.0}}
+        )
+        ticker = _build_mock_ticker(info, income_df, cashflow_df)
+
+        with patch("yfinance.Ticker", return_value=ticker):
+            bundle = YfinanceFundamentalAdapter().get_fundamental_bundle("GOOGL")
+
+        report = bundle["earnings"]["financial_report"]
+        self.assertEqual(report["data_quality"], "unverified")
+        self.assertIsNone(report["revenue"])
+        self.assertIsNone(report["net_profit_parent"])
+        self.assertIn("financial_report:unverified", bundle["errors"])
+
     def test_populates_growth_earnings_dividend_boards_for_us_stock(self) -> None:
         info = {
             "financialCurrency": "USD",

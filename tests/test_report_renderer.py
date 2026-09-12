@@ -205,6 +205,51 @@ class TestReportRenderer(unittest.TestCase):
         self.assertIsNotNone(out)
         self.assertIn("贵州茅台", out)
 
+    def test_render_wechat_cleans_complete_sniper_points_without_duplicate_labels(self) -> None:
+        """Wechat must not duplicate point labels or cut a point in the middle of a sentence."""
+        r = _make_result(
+            dashboard={
+                "core_conclusion": {"one_sentence": "等待确认"},
+                "intelligence": {"risk_alerts": []},
+                "battle_plan": {
+                    "sniper_points": {
+                        "ideal_buy": "理想买入点：340.89美元上方，站稳后再介入",
+                        "stop_loss": "止损位：335.71美元，跌破即执行",
+                        "take_profit": "目标位：345.00美元，接近时分批止盈",
+                    }
+                },
+            }
+        )
+
+        out = render("wechat", [r])
+
+        self.assertIn("🎯理想买入点:340.89美元上方，站稳后再介入", out)
+        self.assertIn("🛑止损位:335.71美元，跌破即执行", out)
+        self.assertIn("🎊目标位:345.00美元，接近时分批止盈", out)
+        self.assertEqual(out.count("理想买入点"), 1)
+
+    def test_render_wechat_marks_unavailable_chip_check_as_not_scored(self) -> None:
+        """Unavailable chip data must be disclosed without being reported as a failed check."""
+        r = _make_result(
+            dashboard={
+                "core_conclusion": {"one_sentence": "等待确认"},
+                "intelligence": {"risk_alerts": []},
+                "battle_plan": {
+                    "sniper_points": {"stop_loss": "110"},
+                    "action_checklist": [
+                        "❌ 检查项1：多头排列——未满足",
+                        "⚠️ 检查项5：筹码健康——筹码分布数据不可用，无法判断",
+                    ],
+                },
+            }
+        )
+
+        out = render("wechat", [r])
+
+        self.assertIn("❌ 检查项1：多头排列——未满足", out)
+        self.assertIn("筹码数据不适用，未参与评分", out)
+        self.assertNotIn("⚠️ 检查项5：筹码健康", out)
+
     def test_render_wechat_omits_decision_signal_excerpt(self) -> None:
         """Wechat reports omit the duplicated DecisionSignal excerpt."""
         r = _with_decision_signal_summary(_make_result())

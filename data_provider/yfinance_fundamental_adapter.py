@@ -118,6 +118,16 @@ def _epoch_to_date(value: Any) -> Optional[str]:
         return None
 
 
+def _is_unverified_nonfinancial_report(
+    revenue: Optional[float], net_profit: Optional[float], sector: Any
+) -> bool:
+    """Reject a clearly implausible profit margin before it reaches the LLM prompt."""
+    sector_text = str(sector or "").strip().lower()
+    if not revenue or revenue <= 0 or net_profit is None or "financial" in sector_text:
+        return False
+    return net_profit / revenue > 0.80
+
+
 def _convert_to_yf_symbol(stock_code: str) -> str:
     """Convert internal code to yfinance ticker. Lightweight inline reproduction
     of YFinanceFetcher._convert_stock_code to avoid pulling the full fetcher
@@ -241,6 +251,14 @@ class YfinanceFundamentalAdapter:
             if margin is not None:
                 net_profit_latest = revenue_latest * margin
 
+        report_unverified = _is_unverified_nonfinancial_report(
+            revenue_latest,
+            net_profit_latest,
+            info.get("sector"),
+        )
+        if report_unverified:
+            result["errors"].append("financial_report:unverified")
+
         # Statement-derived YoY (requires 4 quarters of history) is preferred
         # over .info ratios; otherwise keep the TTM growth values already set
         # from info.revenueGrowth / info.earningsGrowth above. Refuse QoQ
@@ -256,11 +274,12 @@ class YfinanceFundamentalAdapter:
 
         financial_report = {
             "report_date": report_date,
-            "revenue": revenue_latest,
-            "net_profit_parent": net_profit_latest,
-            "operating_cash_flow": operating_cash_flow_latest,
+            "revenue": None if report_unverified else revenue_latest,
+            "net_profit_parent": None if report_unverified else net_profit_latest,
+            "operating_cash_flow": None if report_unverified else operating_cash_flow_latest,
             "roe": growth_payload.get("roe"),
             "currency": financial_currency,
+            "data_quality": "unverified" if report_unverified else "verified",
         }
         if any(v is not None and v != "" for v in financial_report.values()):
             result.setdefault("earnings", {})["financial_report"] = financial_report

@@ -3828,7 +3828,13 @@ class GeminiAnalyzer:
             ttm_cash = dividend_metrics.get("ttm_cash_dividend_per_share", "N/A")
             ttm_count = dividend_metrics.get("ttm_event_count", "N/A")
             report_date = financial_report.get("report_date", "N/A")
-            prompt += f"""
+            if financial_report.get("data_quality") == "unverified":
+                prompt += """
+### 财务数据质量
+> 财务数据待核验，禁止在 `earnings_outlook` 中引用营业收入、净利润或经营现金流，也不得据此作出业绩判断。
+"""
+            else:
+                prompt += f"""
 ### 财报与分红（价值投资口径）
 | 指标 | 数值 | 说明 |
 |------|------|------|
@@ -4080,7 +4086,7 @@ class GeminiAnalyzer:
 """
         else:
             prompt += """
-未搜索到该股票近期的相关新闻。请主要依据技术面数据进行分析。
+新闻数据暂不可用。请主要依据技术面数据进行分析；不得据此写“未检索到利空”或“未检索到利好”，也不得将新闻缺失表述为消息面中性。
 """
 
         # 注入缺失数据警告

@@ -253,6 +253,20 @@ class AnalyzerNewsPromptTestCase(unittest.TestCase):
         self.assertIn("近1日的新闻搜索结果", prompt)
         self.assertIn("超出近1日窗口的新闻一律忽略", prompt)
 
+    def test_prompt_treats_missing_news_as_unavailable_not_no_catalyst(self) -> None:
+        """Missing news must not be turned into a factual claim that no catalysts exist."""
+        with patch.object(GeminiAnalyzer, "_init_litellm", return_value=None):
+            analyzer = GeminiAnalyzer()
+
+        prompt = analyzer._format_prompt(
+            {"code": "GOOGL", "stock_name": "Alphabet", "date": "2026-09-12", "today": {}},
+            "Alphabet",
+            news_context=None,
+        )
+
+        self.assertIn("新闻数据暂不可用", prompt)
+        self.assertIn("不得据此写“未检索到利空”或“未检索到利好”", prompt)
+
     def test_format_prompt_injects_market_phase_and_pack_summary_before_technical_data(self) -> None:
         with patch.object(GeminiAnalyzer, "_init_litellm", return_value=None):
             analyzer = GeminiAnalyzer()
