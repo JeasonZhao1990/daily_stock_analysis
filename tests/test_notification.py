@@ -662,6 +662,63 @@ class TestNotificationServiceSendToMethods(unittest.TestCase):
 class TestNotificationServiceReportGeneration(unittest.TestCase):
     """报告生成与选路相关测试。"""
 
+    @mock.patch("src.notification.get_config")
+    def test_wechat_dashboard_marks_unavailable_inputs_without_false_conclusions(
+        self, mock_get_config: mock.MagicMock
+    ):
+        """The compact WeCom path must not turn missing inputs into conclusions."""
+        mock_get_config.return_value = _make_config(report_renderer_enabled=False)
+        service = NotificationService()
+        result = AnalysisResult(
+            code="GOOGL",
+            name="Alphabet Inc.",
+            sentiment_score=50,
+            trend_prediction="观望",
+            operation_advice="观望",
+            analysis_summary="等待确认。",
+            report_language="zh",
+            dashboard={
+                "core_conclusion": {"one_sentence": "技术面尚待修复。"},
+                "intelligence": {
+                    "earnings_outlook": "营业收入1197.96亿美元、归母净利润1121.07亿美元",
+                    "sentiment_summary": "近3日无有效新闻催化，市场情绪缺乏新增驱动。",
+                    "risk_alerts": ["2026-09-12：近3日未检索到重大利空信息。"],
+                    "positive_catalysts": ["2026-09-12：近3日未检索到明确新增利好催化。"],
+                },
+                "battle_plan": {
+                    "sniper_points": {
+                        "ideal_buy": "理想买入点：340.90美元上方站稳后介入",
+                        "stop_loss": "止损位：335.71美元，跌破执行",
+                        "take_profit": "目标位：345.00美元，放量后观察",
+                    },
+                    "action_checklist": [
+                        "❌ 检查项1：多头排列不满足",
+                        "⚠️ 检查项5：筹码数据不可用，无法判断",
+                    ],
+                },
+            },
+        )
+        result.analysis_context_pack_overview = {
+            "data_quality": {"limitations": ["news: missing"]}
+        }
+        result.fundamental_context = {
+            "earnings": {
+                "status": "ok",
+                "data": {"financial_report": {"data_quality": "unverified"}},
+            }
+        }
+
+        out = service.generate_wechat_dashboard([result])
+
+        self.assertIn("新闻数据暂不可用，消息面未纳入判断", out)
+        self.assertIn("财务数据待核验，暂不展示营收、利润和现金流摘要", out)
+        self.assertNotIn("未检索到重大利空", out)
+        self.assertNotIn("未检索到明确新增利好", out)
+        self.assertIn("🎯理想买入点:340.90美元上方站稳后介入", out)
+        self.assertNotIn("理想买入点:理想买入点", out)
+        self.assertNotIn("筹码数据不可用", out)
+        self.assertIn("❌ 检查项1：多头排列不满足", out)
+
     def test_signal_metadata_uses_resolved_eight_state_action(self):
         service = NotificationService()
         cases = [

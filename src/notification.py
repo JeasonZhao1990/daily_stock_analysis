@@ -1102,6 +1102,53 @@ class NotificationService(
         return value
 
     @staticmethod
+    def _shorten_wechat_text(value: Any, limit: int) -> str:
+        """Shorten only at a natural boundary; never emit a half sentence."""
+        text = str(value or "").strip()
+        if len(text) <= limit:
+            return text
+        cut = max(
+            text.rfind(mark, 0, limit + 1)
+            for mark in ("。", "！", "？", "；", ";", "，", ",", " ")
+        )
+        return text[:cut + 1].rstrip() if cut >= limit // 2 else text
+
+    @staticmethod
+    def _has_context_limitation(result: AnalysisResult, limitation: str) -> bool:
+        overview = getattr(result, "analysis_context_pack_overview", None)
+        if not isinstance(overview, dict):
+            return False
+        data_quality = overview.get("data_quality")
+        if not isinstance(data_quality, dict):
+            return False
+        limitations = data_quality.get("limitations")
+        return isinstance(limitations, list) and limitation in limitations
+
+    @staticmethod
+    def _is_unavailable_chip_check(value: Any) -> bool:
+        text = str(value or "")
+        return "筹码" in text and any(marker in text for marker in ("不可用", "未提供", "无法判断", "缺失"))
+
+    @staticmethod
+    def _is_no_news_claim(value: Any) -> bool:
+        text = str(value or "")
+        return any(
+            marker in text
+            for marker in (
+                "未检索到",
+                "未发现",
+                "无有效新闻催化",
+                "暂无明确增量",
+                "暂无新增催化",
+                "舆情端暂无",
+            )
+        )
+
+    def _financial_data_is_unverified(self, result: AnalysisResult) -> bool:
+        financial_report = self._get_fundamental_blocks(result).get("financial_report", {})
+        return isinstance(financial_report, dict) and financial_report.get("data_quality") == "unverified"
+
+    @staticmethod
     def _phase_decision_list(value: Any) -> List[str]:
         if not isinstance(value, list):
             return []
@@ -1656,13 +1703,29 @@ class NotificationService(
                     lines.append("")
                 # 重要信息区（舆情+基本面）
                 info_lines = []
+                news_unavailable = self._has_context_limitation(result, "news: missing")
+                financial_unverified = self._financial_data_is_unverified(result)
 
                 # 业绩预期
                 if intel.get('earnings_outlook'):
-                    outlook = str(intel['earnings_outlook'])[:60]
+                    if financial_unverified:
+                        outlook = (
+                            "财务数据待核验，暂不展示营收、利润和现金流摘要。"
+                            if report_language == "zh"
+                            else "Financial data is pending verification; revenue, profit, and cash-flow figures are withheld."
+                        )
+                    else:
+                        outlook = self._shorten_wechat_text(intel['earnings_outlook'], 120)
                     info_lines.append(f"📊 {labels['earnings_outlook_label']}: {outlook}")
-                if intel.get('sentiment_summary'):
-                    sentiment = str(intel['sentiment_summary'])[:50]
+                if news_unavailable:
+                    sentiment = (
+                        "新闻数据暂不可用，消息面未纳入判断。"
+                        if report_language == "zh"
+                        else "News data is unavailable and is not used in this assessment."
+                    )
+                    info_lines.append(f"💭 {labels['sentiment_summary_label']}: {sentiment}")
+                elif intel.get('sentiment_summary'):
+                    sentiment = self._shorten_wechat_text(intel['sentiment_summary'], 100)
                     info_lines.append(f"💭 {labels['sentiment_summary_label']}: {sentiment}")
                 if info_lines:
                     lines.extend(info_lines)
@@ -1670,37 +1733,39 @@ class NotificationService(
 
                 # 风险警报（最重要，醒目显示）
                 risks = intel.get('risk_alerts', []) if intel else []
+                if news_unavailable:
+                    risks = [risk for risk in risks if not self._is_no_news_claim(risk)]
                 if risks:
                     lines.append(f"🚨 **{labels['risk_alerts_label']}**:")
                     for risk in risks[:2]:  # 最多显示2条
-                        risk_str = str(risk)
-                        risk_text = risk_str[:50] + "..." if len(risk_str) > 50 else risk_str
+                        risk_text = self._shorten_wechat_text(risk, 120)
                         lines.append(f"   • {risk_text}")
                     lines.append("")
 
                 # 利好催化
                 catalysts = intel.get('positive_catalysts', []) if intel else []
+                if news_unavailable:
+                    catalysts = [cat for cat in catalysts if not self._is_no_news_claim(cat)]
                 if catalysts:
                     lines.append(f"✨ **{labels['positive_catalysts_label']}**:")
                     for cat in catalysts[:2]:  # 最多显示2条
-                        cat_str = str(cat)
-                        cat_text = cat_str[:50] + "..." if len(cat_str) > 50 else cat_str
+                        cat_text = self._shorten_wechat_text(cat, 120)
                         lines.append(f"   • {cat_text}")
                     lines.append("")
 
                 # 狙击点位
                 sniper = battle.get('sniper_points', {}) if battle else {}
                 if sniper:
-                    ideal_buy = str(sniper.get('ideal_buy', ''))
-                    stop_loss = str(sniper.get('stop_loss', ''))
-                    take_profit = str(sniper.get('take_profit', ''))
+                    ideal_buy = self._clean_sniper_value(sniper.get('ideal_buy', ''))
+                    stop_loss = self._clean_sniper_value(sniper.get('stop_loss', ''))
+                    take_profit = self._clean_sniper_value(sniper.get('take_profit', ''))
                     points = []
-                    if ideal_buy:
-                        points.append(f"🎯{labels['ideal_buy_label']}:{ideal_buy[:15]}")
-                    if stop_loss:
-                        points.append(f"🛑{labels['stop_loss_label']}:{stop_loss[:15]}")
-                    if take_profit:
-                        points.append(f"🎊{labels['take_profit_label']}:{take_profit[:15]}")
+                    if ideal_buy and ideal_buy != 'N/A':
+                        points.append(f"🎯{labels['ideal_buy_label']}:{ideal_buy}")
+                    if stop_loss and stop_loss != 'N/A':
+                        points.append(f"🛑{labels['stop_loss_label']}:{stop_loss}")
+                    if take_profit and take_profit != 'N/A':
+                        points.append(f"🎊{labels['take_profit_label']}:{take_profit}")
                     if points:
                         lines.append(" | ".join(points))
                         lines.append("")
@@ -1746,7 +1811,11 @@ class NotificationService(
                 checklist = battle.get('action_checklist', []) if battle else []
                 if checklist:
                     # 只显示不通过的项目
-                    failed_checks = [str(c) for c in checklist if str(c).startswith('❌') or str(c).startswith('⚠️')]
+                    failed_checks = [
+                        str(c) for c in checklist
+                        if (str(c).startswith('❌') or str(c).startswith('⚠️'))
+                        and not self._is_unavailable_chip_check(c)
+                    ]
                     if failed_checks:
                         lines.append(f"**{labels['failed_checks_heading']}**:")
                         for check in failed_checks[:3]:
