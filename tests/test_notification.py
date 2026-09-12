@@ -686,7 +686,7 @@ class TestNotificationServiceReportGeneration(unittest.TestCase):
                 },
                 "intelligence": {
                     "earnings_outlook": "营业收入1197.96亿美元、归母净利润1121.07亿美元",
-                    "sentiment_summary": "近3日无有效新闻催化，市场情绪缺乏新增驱动。",
+                    "sentiment_summary": "近3日新闻面无明确新增催化或重大利空，交易决策主要依赖技术面。",
                     "risk_alerts": ["2026-09-12：近3日未检索到重大利空信息。"],
                     "positive_catalysts": ["2026-09-12：近3日未检索到明确新增利好催化。"],
                 },
