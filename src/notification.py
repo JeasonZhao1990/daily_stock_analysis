@@ -1102,6 +1102,15 @@ class NotificationService(
         return value
 
     @staticmethod
+    def _clean_position_advice(value: Any) -> str:
+        """Avoid repeating the rendered holder/non-holder label in its content."""
+        text = str(value or "").strip()
+        for prefix in ("空仓者建议：", "持仓者建议：", "空仓者建议:", "持仓者建议:"):
+            if text.startswith(prefix):
+                return text[len(prefix):].strip()
+        return text
+
+    @staticmethod
     def _shorten_wechat_text(value: Any, limit: int) -> str:
         """Shorten only at a natural boundary; never emit a half sentence."""
         text = str(value or "").strip()
@@ -1138,11 +1147,24 @@ class NotificationService(
                 "未检索到",
                 "未发现",
                 "无有效新闻催化",
+                "舆情信息不足",
+                "新闻信息不足",
+                "新闻数据不足",
+                "新闻搜索结果为空",
                 "暂无明确增量",
                 "暂无新增催化",
                 "舆情端暂无",
             )
         )
+
+    def _intelligence_indicates_news_unavailable(self, intelligence: Dict[str, Any]) -> bool:
+        """Infer missing news when legacy payloads omit the context-quality flag."""
+        values = [intelligence.get("sentiment_summary", "")]
+        for key in ("risk_alerts", "positive_catalysts"):
+            items = intelligence.get(key, [])
+            if isinstance(items, list):
+                values.extend(items)
+        return any(self._is_no_news_claim(value) for value in values)
 
     def _financial_data_is_unverified(self, result: AnalysisResult) -> bool:
         financial_report = self._get_fundamental_blocks(result).get("financial_report", {})
@@ -1703,7 +1725,10 @@ class NotificationService(
                     lines.append("")
                 # 重要信息区（舆情+基本面）
                 info_lines = []
-                news_unavailable = self._has_context_limitation(result, "news: missing")
+                news_unavailable = (
+                    self._has_context_limitation(result, "news: missing")
+                    or self._intelligence_indicates_news_unavailable(intel)
+                )
                 financial_unverified = self._financial_data_is_unverified(result)
 
                 # 业绩预期
@@ -1773,12 +1798,18 @@ class NotificationService(
                 # 持仓建议
                 pos_advice = core.get('position_advice', {}) if core else {}
                 if pos_advice:
-                    no_pos = str(pos_advice.get('no_position', ''))
-                    has_pos = str(pos_advice.get('has_position', ''))
+                    no_pos = self._clean_position_advice(pos_advice.get('no_position', ''))
+                    has_pos = self._clean_position_advice(pos_advice.get('has_position', ''))
                     if no_pos:
-                        lines.append(f"🆕 {labels['no_position_label']}: {no_pos[:50]}")
+                        lines.append(
+                            f"🆕 {labels['no_position_label']}: "
+                            f"{self._shorten_wechat_text(no_pos, 160)}"
+                        )
                     if has_pos:
-                        lines.append(f"💼 {labels['has_position_label']}: {has_pos[:50]}")
+                        lines.append(
+                            f"💼 {labels['has_position_label']}: "
+                            f"{self._shorten_wechat_text(has_pos, 160)}"
+                        )
                     lines.append("")
 
                 # 多策略综合

@@ -678,7 +678,12 @@ class TestNotificationServiceReportGeneration(unittest.TestCase):
             analysis_summary="等待确认。",
             report_language="zh",
             dashboard={
-                "core_conclusion": {"one_sentence": "技术面尚待修复。"},
+                "core_conclusion": {
+                    "one_sentence": "技术面尚待修复。",
+                    "position_advice": {
+                        "has_position": "持仓者建议：轻仓可继续观察；若跌破335.71美元需提高警惕，长期徘徊不宜加仓。"
+                    },
+                },
                 "intelligence": {
                     "earnings_outlook": "营业收入1197.96亿美元、归母净利润1121.07亿美元",
                     "sentiment_summary": "近3日无有效新闻催化，市场情绪缺乏新增驱动。",
@@ -698,9 +703,6 @@ class TestNotificationServiceReportGeneration(unittest.TestCase):
                 },
             },
         )
-        result.analysis_context_pack_overview = {
-            "data_quality": {"limitations": ["news: missing"]}
-        }
         result.fundamental_context = {
             "earnings": {
                 "status": "ok",
@@ -718,6 +720,8 @@ class TestNotificationServiceReportGeneration(unittest.TestCase):
         self.assertNotIn("理想买入点:理想买入点", out)
         self.assertNotIn("筹码数据不可用", out)
         self.assertIn("❌ 检查项1：多头排列不满足", out)
+        self.assertIn("长期徘徊不宜加仓。", out)
+        self.assertNotIn("持仓者: 持仓者建议", out)
 
     def test_signal_metadata_uses_resolved_eight_state_action(self):
         service = NotificationService()
