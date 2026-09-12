@@ -1146,6 +1146,7 @@ class NotificationService(
             for marker in (
                 "未检索到",
                 "未发现",
+                "近3日未见",
                 "无有效新闻催化",
                 "新闻面无明确新增催化",
                 "无明确新增催化或重大利空",
@@ -1158,6 +1159,17 @@ class NotificationService(
                 "舆情端暂无",
             )
         )
+
+    def _remove_no_news_clauses(self, value: Any) -> str:
+        """Keep structured facts while dropping news conclusions from legacy summaries."""
+        text = str(value or "").strip()
+        if not text:
+            return text
+        had_terminal_period = text.endswith("。")
+        clauses = [clause.strip() for clause in text.replace("。", "；").split("；")]
+        kept = [clause for clause in clauses if clause and not self._is_no_news_claim(clause)]
+        cleaned = "；".join(kept)
+        return f"{cleaned}。" if cleaned and had_terminal_period else cleaned
 
     def _intelligence_indicates_news_unavailable(self, intelligence: Dict[str, Any]) -> bool:
         """Infer missing news when legacy payloads omit the context-quality flag."""
@@ -1742,7 +1754,10 @@ class NotificationService(
                             else "Financial data is pending verification; revenue, profit, and cash-flow figures are withheld."
                         )
                     else:
-                        outlook = self._shorten_wechat_text(intel['earnings_outlook'], 120)
+                        raw_outlook = intel['earnings_outlook']
+                        if news_unavailable:
+                            raw_outlook = self._remove_no_news_clauses(raw_outlook)
+                        outlook = self._shorten_wechat_text(raw_outlook, 120)
                     info_lines.append(f"📊 {labels['earnings_outlook_label']}: {outlook}")
                 if news_unavailable:
                     sentiment = (

@@ -725,6 +725,32 @@ class TestNotificationServiceReportGeneration(unittest.TestCase):
         self.assertIn("长期徘徊不宜加仓。", out)
         self.assertNotIn("持仓者: 持仓者建议", out)
 
+    @mock.patch("src.notification.get_config")
+    def test_wechat_dashboard_keeps_financial_fields_but_removes_no_news_clause(
+        self, mock_get_config: mock.MagicMock
+    ):
+        mock_get_config.return_value = _make_config(report_renderer_enabled=False)
+        result = AnalysisResult(
+            code="MSFT", name="Microsoft", sentiment_score=50,
+            trend_prediction="观望", operation_advice="观望", report_language="zh",
+            dashboard={
+                "core_conclusion": {},
+                "intelligence": {
+                    "earnings_outlook": "收入900.07亿美元、净利润357.66亿美元；但近3日未见新的业绩预告或快报催化。",
+                    "sentiment_summary": "新闻面无明确新增催化或重大利空。",
+                },
+                "battle_plan": {},
+            },
+        )
+        result.fundamental_context = {
+            "earnings": {"status": "ok", "data": {"financial_report": {"data_quality": "verified"}}}
+        }
+
+        out = NotificationService().generate_wechat_dashboard([result])
+
+        self.assertIn("收入900.07亿美元、净利润357.66亿美元", out)
+        self.assertNotIn("近3日未见新的业绩预告或快报催化", out)
+
     def test_signal_metadata_uses_resolved_eight_state_action(self):
         service = NotificationService()
         cases = [
