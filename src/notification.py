@@ -1850,7 +1850,7 @@ class NotificationService(
                     if failed_checks:
                         lines.append(f"**{labels['failed_checks_heading']}**:")
                         for check in failed_checks[:3]:
-                            lines.append(f"   {check[:40]}")
+                            lines.append(f"   {check}")
                         lines.append("")
 
                 lines.append("---")

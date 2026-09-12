@@ -698,6 +698,7 @@ class TestNotificationServiceReportGeneration(unittest.TestCase):
                     },
                     "action_checklist": [
                         "❌ 检查项1：多头排列不满足",
+                        "⚠️ 检查项6：PE数据缺失，且净利润为负；PB约3.53，估值需结合加密周期谨慎判断。",
                         "⚠️ 检查项5：筹码数据不可用，无法判断",
                     ],
                 },
@@ -720,6 +721,7 @@ class TestNotificationServiceReportGeneration(unittest.TestCase):
         self.assertNotIn("理想买入点:理想买入点", out)
         self.assertNotIn("筹码数据不可用", out)
         self.assertIn("❌ 检查项1：多头排列不满足", out)
+        self.assertIn("估值需结合加密周期谨慎判断。", out)
         self.assertIn("长期徘徊不宜加仓。", out)
         self.assertNotIn("持仓者: 持仓者建议", out)
 
